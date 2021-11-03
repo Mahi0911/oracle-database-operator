@@ -56,7 +56,7 @@ jobs:
           make manifests
           IMAGE_NAME=${{ env.IMAGE }}
           IMAGE_NAME=${IMAGE,,}
-          make docker-build IMG="${{ env.REGISTRY }}/${IMAGE_NAME}:${BRANCH_NAME}"
-          docker push "${{ env.REGISTRY }}/${IMAGE_NAME}:${BRANCH_NAME}"
-          docker rmi "${{ env.REGISTRY }}/${IMAGE_NAME}:${BRANCH_NAME}" && docker system prune -f
+          make docker-build IMG="${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.BRANCH_NAME }}"
+          docker push "${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.BRANCH_NAME }}"
+          docker rmi "${{ env.REGISTRY }}/${IMAGE_NAME}:${{ env.BRANCH_NAME }}" && docker system prune -f
           rm -rf bin/
