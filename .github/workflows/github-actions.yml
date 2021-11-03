@@ -38,14 +38,12 @@ jobs:
       # extract branch name
       - name: Extract branch name
         if: github.event_name != 'pull_request'
-        shell: bash
-        run: echo "::set-env name=BRANCH_NAME::$(echo ${GITHUB_REF#refs/heads/})"
-        id: extract_branch
+        run: BRANCH_NAME=${GITHUB_REF#refs/heads/}"
 
       # extract branch name on pull request
       - name: Extract branch name
         if: github.event_name == 'pull_request'
-        run: echo "::set-env name=BRANCH_NAME::$(echo ${GITHUB_HEAD_REF})"
+        run: BRANCH_NAME=${GITHUB_HEAD_REF}"
 
       # Build and push Operator image (don't push on PR)
       - name: Build and push Docker image
