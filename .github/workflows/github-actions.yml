@@ -38,12 +38,14 @@ jobs:
       # extract branch name
       - name: Extract branch name
         if: github.event_name != 'pull_request'
+        run: echo "BRANCH_NAME ${GITHUB_REF#refs/heads/}"
         env:
           BRANCH_NAME: ${GITHUB_REF#refs/heads/}
 
       # extract branch name on pull request
       - name: Extract branch name
         if: github.event_name == 'pull_request'
+        run: echo "BRANCH_NAME ${GITHUB_HEAD_REF}"
         env:
           BRANCH_NAME: ${GITHUB_HEAD_REF}
 
