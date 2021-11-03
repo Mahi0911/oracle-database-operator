@@ -1,4 +1,4 @@
-name: Docker
+name: Operator Image
 
 on:
   push:
@@ -46,7 +46,7 @@ jobs:
         run: echo "BRANCH_NAME=${GITHUB_HEAD_REF}" >> "$GITHUB_ENV"
 
       # Build and push Operator image (don't push on PR)
-      - name: Build and push Docker image
+      - name: Build and push Operator image
         run:  |
           make generate
           make manifests
