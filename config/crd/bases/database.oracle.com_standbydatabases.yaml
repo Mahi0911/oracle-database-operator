@@ -1,0 +1,119 @@
+
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.6.1
+  creationTimestamp: null
+  name: standbydatabases.database.oracle.com
+spec:
+  group: database.oracle.com
+  names:
+    kind: StandbyDatabase
+    listKind: StandbyDatabaseList
+    plural: standbydatabases
+    singular: standbydatabase
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .status.status
+      name: Status
+      type: string
+    - jsonPath: .status.version
+      name: Version
+      type: string
+    - jsonPath: .status.role
+      name: Role
+      type: string
+    - jsonPath: .status.clusterConnectString
+      name: Cluster Connect Str
+      type: string
+    - jsonPath: .status.externalConnectString
+      name: External Connect Str
+      type: string
+    - jsonPath: .spec.primaryDatabaseRef
+      name: Primary Database
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: StandbyDatabase is the Schema for the standbydatabases API
+        properties:
+          apiVersion:
+            description: 'APIVersion defines the versioned schema of this representation
+              of an object. Servers should convert recognized schemas to the latest
+              internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources'
+            type: string
+          kind:
+            description: 'Kind is a string value representing the REST resource this
+              object represents. Servers may infer this from the endpoint the client
+              submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds'
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: StandbyDatabaseSpec defines the desired state of StandbyDatabase
+            properties:
+              nodeSelector:
+                additionalProperties:
+                  type: string
+                type: object
+              persistence:
+                description: StandbyDatabasePersistence defines the storage releated
+                  params
+                properties:
+                  accessMode:
+                    enum:
+                    - ReadWriteOnce
+                    - ReadWriteMany
+                    type: string
+                  size:
+                    type: string
+                  storageClass:
+                    type: string
+                required:
+                - accessMode
+                - size
+                - storageClass
+                type: object
+              primaryDatabaseRef:
+                type: string
+              replicas:
+                minimum: 1
+                type: integer
+              sid:
+                type: string
+            required:
+            - persistence
+            - primaryDatabaseRef
+            - replicas
+            - sid
+            type: object
+          status:
+            description: StandbyDatabaseStatus defines the observed state of StandbyDatabase
+            properties:
+              clusterConnectString:
+                type: string
+              datafilesCreated:
+                type: string
+              externalConnectString:
+                type: string
+              role:
+                type: string
+              status:
+                type: string
+              version:
+                type: string
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

@@ -1,0 +1,29 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: StandbyDatabase
+metadata:
+  name: standbydatabase-sample
+  namespace: default
+spec:
+
+  ## Use only alphanumeric characters for sid
+  sid: ORCLS
+
+  ## Primary DB ref. This can be of kind SingleInstanceDatabase or CloneDB
+  primaryDatabaseRef: "sidb-sample"
+
+  ## size : Minimum size of pvc | class : PVC storage Class , null string refers to NFS .
+  ## AccessMode can only accept one of ReadWriteOnce , ReadWriteMany
+  persistence:
+    size: 100Gi
+    storageClass: ""
+    accessMode: "ReadWriteMany"
+
+  ## Deploy only on nodes having required labels . Format label_name : label_value .
+  ## Leave empty if there is no such requirement .
+  ## Uncomment to use
+  # nodeSelector: 
+  #   failure-domain.beta.kubernetes.io/zone: bVCG:PHX-AD-1
+  #   pool: sidb
+
+  ## Count of Database Pods. Applicable only for "ReadWriteMany" AccessMode
+  replicas: 1

@@ -1,0 +1,40 @@
+apiVersion: database.oracle.com/v1alpha1
+kind: DataguardBroker
+metadata:
+  name: dataguardbroker-sample
+  namespace: default
+spec:
+  
+  ## Primary DB ref. This can be of kind SingleInstanceDatabase or CloneDB
+  primaryDatabaseRef: "sidb-sample"
+
+  ## Standby DB pod CRD Metadata Name to add this DB to DG config
+  standbyDatabaseRefs:
+  #  - standbyDatabase-sample1
+  #  - standbyDatabase-sample2
+
+  ## Deploy only on nodes having required labels . Format label_name : label_value .
+  ## Leave empty if there is no such requirement .
+  ## Uncomment to use
+  # nodeSelector: 
+  #   failure-domain.beta.kubernetes.io/zone: bVCG:PHX-AD-1
+  #   pool: sidb
+
+  ## Type of service . Applicable on cloud enviroments only
+  ## if loadBalService : false , service type = "NodePort" . else "LoadBalancer"
+  loadBalancer: false
+
+  ## Protection Mode for dg configuration . MaxAvailability or MaxPerformance
+  protectionMode: MaxAvailability
+  
+  ## Set Fast Start Failover targets of Databases . 
+  ## If not mentioned ,FSFO target of a database defaults to all other databases
+  ## Uncomment to Use . Mention FSFO targets seperated by ',' 
+  fastStartFailOver:
+    enable: false
+  #  strategy:
+  #  - sourceDatabaseRef: ORCLP
+  #    targetDatabaseRefs: ORCLS1,ORCLS2
+
+  ## Manual Switchover to this database to make it primary(if not already) . 
+  setAsPrimaryDatabase: ""

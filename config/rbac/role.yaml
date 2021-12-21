@@ -119,6 +119,32 @@ rules:
 - apiGroups:
   - database.oracle.com
   resources:
+  - dataguardbrokers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dataguardbrokers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - dataguardbrokers/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
   - oraclerestdataservices
   verbs:
   - create
@@ -194,6 +220,32 @@ rules:
   - database.oracle.com
   resources:
   - singleinstancedatabases/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - standbydatabases
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - standbydatabases/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - database.oracle.com
+  resources:
+  - standbydatabases/status
   verbs:
   - get
   - patch
