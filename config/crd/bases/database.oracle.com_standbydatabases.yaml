@@ -55,6 +55,20 @@ spec:
           spec:
             description: StandbyDatabaseSpec defines the desired state of StandbyDatabase
             properties:
+              adminPassword:
+                description: StandbyDatabasePassword defines the secret containing
+                  Password mapped to secretKey
+                properties:
+                  keepSecret:
+                    type: boolean
+                  secretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - keepSecret
+                - secretKey
+                type: object
               nodeSelector:
                 additionalProperties:
                   type: string
@@ -85,6 +99,7 @@ spec:
               sid:
                 type: string
             required:
+            - adminPassword
             - persistence
             - primaryDatabaseRef
             - replicas

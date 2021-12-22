@@ -227,6 +227,19 @@ spec:
           spec:
             description: DataguardBrokerSpec defines the desired state of DataguardBroker
             properties:
+              adminPassword:
+                description: DataguardBrokerPassword defines the secret containing Password mapped to secretKey
+                properties:
+                  keepSecret:
+                    type: boolean
+                  secretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - keepSecret
+                - secretKey
+                type: object
               fastStartFailOver:
                 properties:
                   enable:
@@ -262,6 +275,7 @@ spec:
                   type: string
                 type: array
             required:
+            - adminPassword
             - primaryDatabaseRef
             - protectionMode
             - standbyDatabaseRefs
@@ -1204,6 +1218,19 @@ spec:
           spec:
             description: StandbyDatabaseSpec defines the desired state of StandbyDatabase
             properties:
+              adminPassword:
+                description: StandbyDatabasePassword defines the secret containing Password mapped to secretKey
+                properties:
+                  keepSecret:
+                    type: boolean
+                  secretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - keepSecret
+                - secretKey
+                type: object
               nodeSelector:
                 additionalProperties:
                   type: string
@@ -1233,6 +1260,7 @@ spec:
               sid:
                 type: string
             required:
+            - adminPassword
             - persistence
             - primaryDatabaseRef
             - replicas
@@ -1681,7 +1709,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: phx.ocir.io/oracassandra/operator/prebuiltdb:test-0.1.2
+        image: phx.ocir.io/oracassandra/operator/standby:0.1.2
         imagePullPolicy: Always
         name: manager
         ports:

@@ -119,7 +119,7 @@ func main() {
 	}
 	if err = (&databasecontroller.OracleRestDataServiceReconciler{
 		Client:   mgr.GetClient(),
-		Log:      ctrl.Log.WithName("controllers").WithName("OracleRestDataService"),
+		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("OracleRestDataService"),
 		Scheme:   mgr.GetScheme(),
 		Config:   mgr.GetConfig(),
 		Recorder: mgr.GetEventRecorderFor("OracleRestDataService"),
@@ -127,6 +127,27 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "OracleRestDataService")
 		os.Exit(1)
 	}
+	if err = (&databasecontroller.StandbyDatabaseReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("StandbyDatabase"),
+		Scheme:   mgr.GetScheme(),
+		Config:   mgr.GetConfig(),
+		Recorder: mgr.GetEventRecorderFor("StandbyDatabase"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "StandbyDatabase")
+		os.Exit(1)
+	}
+	if err = (&databasecontroller.DataguardBrokerReconciler{
+		Client:   mgr.GetClient(),
+		Log:      ctrl.Log.WithName("controllers").WithName("database").WithName("DataguardBroker"),
+		Scheme:   mgr.GetScheme(),
+		Config:   mgr.GetConfig(),
+		Recorder: mgr.GetEventRecorderFor("DataguardBroker"),
+	}).SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create controller", "controller", "DataguardBroker")
+		os.Exit(1)
+	}
+	// +kubebuilder:scaffold:builder
 
 	// Set RECONCILE_INTERVAL environment variable if you want to change the default value from 15 secs
 	interval := os.Getenv("RECONCILE_INTERVAL")
@@ -147,24 +168,6 @@ func main() {
 			os.Exit(1)
 		}
 	}
-
-	if err = (&databasecontroller.StandbyDatabaseReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("StandbyDatabase"),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "StandbyDatabase")
-		os.Exit(1)
-	}
-	if err = (&databasecontroller.DataguardBrokerReconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("DataguardBroker"),
-		Scheme: mgr.GetScheme(),
-	}).SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to create controller", "controller", "DataguardBroker")
-		os.Exit(1)
-	}
-	// +kubebuilder:scaffold:builder
 
 	setupLog.Info("starting manager")
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {

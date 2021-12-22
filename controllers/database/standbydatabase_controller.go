@@ -214,6 +214,41 @@ func (r *StandbyDatabaseReconciler) validateSidbReadiness(m *dbapi.StandbyDataba
 		return requeueY, sidbReadyPod
 	}
 
+	// Validate databaseRef Admin Password
+	adminPasswordSecret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + m.Spec.AdminPassword.SecretName + " Not Found")
+			return requeueY, sidbReadyPod
+		}
+		log.Error(err, err.Error())
+		return requeueY, sidbReadyPod
+	}
+	adminPassword := string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
+
+	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword), dbcommons.GetSqlClient(n.Spec.Edition)))
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY, sidbReadyPod
+	}
+	if strings.Contains(out, "USER is \"SYS\"") {
+		log.Info("validated Admin password successfully")
+	} else if strings.Contains(out, "ORA-01017") {
+		m.Status.Status = dbcommons.StatusError
+		eventReason := "Logon denied"
+		eventMsg := "invalid databaseRef admin password. secret: " + m.Spec.AdminPassword.SecretName
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		return requeueY, sidbReadyPod
+	} else {
+		return requeueY, sidbReadyPod
+	}
+
 	flashBackStatus, archiveLogStatus, forceLoggingStatus, result := dbcommons.CheckDBConfig(sidbReadyPod, r, r.Config, ctx, req, n.Spec.Edition)
 	if result.Requeue {
 		return result, sidbReadyPod

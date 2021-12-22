@@ -50,8 +50,9 @@ type StandbyDatabaseSpec struct {
 	// INSERT ADDITIONAL SPEC FIELDS - desired state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
 
-	Sid                string `json:"sid"`
-	PrimaryDatabaseRef string `json:"primaryDatabaseRef"`
+	Sid                string                  `json:"sid"`
+	PrimaryDatabaseRef string                  `json:"primaryDatabaseRef"`
+	AdminPassword      StandbyDatabasePassword `json:"adminPassword"`
 
 	// +k8s:openapi-gen=true
 	// +kubebuilder:validation:Minimum=1
@@ -67,6 +68,13 @@ type StandbyDatabasePersistence struct {
 
 	// +kubebuilder:validation:Enum=ReadWriteOnce;ReadWriteMany
 	AccessMode string `json:"accessMode"`
+}
+
+// StandbyDatabasePassword defines the secret containing Password mapped to secretKey
+type StandbyDatabasePassword struct {
+	SecretName string `json:"secretName,omitempty"`
+	SecretKey  string `json:"secretKey"`
+	KeepSecret bool   `json:"keepSecret"`
 }
 
 // StandbyDatabaseStatus defines the observed state of StandbyDatabase

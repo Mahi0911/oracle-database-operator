@@ -130,28 +130,29 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Validate if Primary Database Reference is ready
-	result, sidbReadyPod := r.validateSidbReadiness(dataguardBroker, singleInstanceDatabase, ctx, req)
+	result, sidbReadyPod, adminPassword := r.validateSidbReadiness(dataguardBroker, singleInstanceDatabase, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
 
 	// Setup the DG Configuration
-	result = r.setupDataguardBrokerConfiguration(dataguardBroker, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	result = r.setupDataguardBrokerConfiguration(dataguardBroker, singleInstanceDatabase, sidbReadyPod, adminPassword, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
 
 	// Set FSFO Targets according to FastStartFailover.Strategy
-	result = r.setFSFOTargets(dataguardBroker, singleInstanceDatabase, sidbReadyPod, ctx, req)
+	result = r.setFSFOTargets(dataguardBroker, singleInstanceDatabase, sidbReadyPod, adminPassword, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
 	}
 
 	// Set a particular database as primary
-	result = r.SetAsPrimaryDatabase(singleInstanceDatabase.Spec.Sid, dataguardBroker.Spec.SetAsPrimaryDatabase, dataguardBroker, singleInstanceDatabase, ctx, req)
+	result = r.SetAsPrimaryDatabase(singleInstanceDatabase.Spec.Sid, dataguardBroker.Spec.SetAsPrimaryDatabase, dataguardBroker,
+		singleInstanceDatabase, adminPassword, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -165,7 +166,7 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 	}
 
 	// Create Observer Pod
-	result = r.createPod(ctx, req, dataguardBroker, singleInstanceDatabase, sidbReadyPod)
+	result = r.createPod(ctx, req, dataguardBroker, singleInstanceDatabase, sidbReadyPod, adminPassword)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
@@ -187,16 +188,16 @@ func (r *DataguardBrokerReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 //    Validate Readiness of the primary DB specified
 //#####################################################################################################
 func (r *DataguardBrokerReconciler) validateSidbReadiness(m *dbapi.DataguardBroker,
-	n *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod) {
+	n *dbapi.SingleInstanceDatabase, ctx context.Context, req ctrl.Request) (ctrl.Result, corev1.Pod, string) {
 
 	log := r.Log.WithValues("validateSidbReadiness", req.NamespacedName)
-
+	adminPassword := ""
 	// ## FETCH THE SIDB REPLICAS .
 	sidbReadyPod, _, _, _, err := dbcommons.FindPods(r, n.Spec.Image.Version,
 		n.Spec.Image.PullFrom, n.Name, n.Namespace, ctx, req)
 	if err != nil {
 		log.Error(err, err.Error())
-		return requeueY, sidbReadyPod
+		return requeueY, sidbReadyPod, adminPassword
 	}
 
 	if n.Status.Status != dbcommons.StatusReady {
@@ -204,10 +205,45 @@ func (r *DataguardBrokerReconciler) validateSidbReadiness(m *dbapi.DataguardBrok
 		eventReason := "Waiting"
 		eventMsg := "Waiting for " + n.Name + " to be Ready"
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
-		return requeueY, sidbReadyPod
+		return requeueY, sidbReadyPod, adminPassword
 	}
 
-	return requeueN, sidbReadyPod
+	// Validate databaseRef Admin Password
+	adminPasswordSecret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, adminPasswordSecret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			//m.Status.Status = dbcommons.StatusError
+			eventReason := "Waiting"
+			eventMsg := "waiting for secret : " + m.Spec.AdminPassword.SecretName + " to get created"
+			r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
+			r.Log.Info("Secret " + m.Spec.AdminPassword.SecretName + " Not Found")
+			return requeueY, sidbReadyPod, adminPassword
+		}
+		log.Error(err, err.Error())
+		return requeueY, sidbReadyPod, adminPassword
+	}
+	adminPassword = string(adminPasswordSecret.Data[m.Spec.AdminPassword.SecretKey])
+
+	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, true, "bash", "-c",
+		fmt.Sprintf("echo -e  \"%s\"  | %s", fmt.Sprintf(dbcommons.ValidateAdminPassword, adminPassword), dbcommons.GetSqlClient(n.Spec.Edition)))
+	if err != nil {
+		log.Error(err, err.Error())
+		return requeueY, sidbReadyPod, adminPassword
+	}
+	if strings.Contains(out, "USER is \"SYS\"") {
+		log.Info("validated Admin password successfully")
+	} else if strings.Contains(out, "ORA-01017") {
+		//m.Status.Status = dbcommons.StatusError
+		eventReason := "Logon denied"
+		eventMsg := "invalid databaseRef admin password. secret: " + m.Spec.AdminPassword.SecretName
+		r.Recorder.Eventf(m, corev1.EventTypeWarning, eventReason, eventMsg)
+		return requeueY, sidbReadyPod, adminPassword
+	} else {
+		return requeueY, sidbReadyPod, adminPassword
+	}
+
+	return requeueN, sidbReadyPod, adminPassword
 }
 
 //#############################################################################
@@ -507,7 +543,7 @@ func (r *DataguardBrokerReconciler) createPVC(ctx context.Context, req ctrl.Requ
 //    Create the DataguardBroker POD for Observer
 //#############################################################################
 func (r *DataguardBrokerReconciler) createPod(ctx context.Context, req ctrl.Request, m *dbapi.DataguardBroker,
-	n *dbapi.SingleInstanceDatabase, sidbReadyPod corev1.Pod) ctrl.Result {
+	n *dbapi.SingleInstanceDatabase, sidbReadyPod corev1.Pod, adminPassword string) ctrl.Result {
 
 	log := r.Log.WithValues("createPOD", req.NamespacedName)
 	if !m.Spec.FastStartFailOver.Enable {
@@ -541,7 +577,7 @@ func (r *DataguardBrokerReconciler) createPod(ctx context.Context, req ctrl.Requ
 
 	// ## CHECK IF DG CONFIGURATION AVAILABLE ##
 	out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/${ORACLE_PWD}@${ORACLE_SID} ", dbcommons.DBShowConfigCMD))
+		fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/%s@${ORACLE_SID} ", dbcommons.DBShowConfigCMD, adminPassword))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY
@@ -552,7 +588,7 @@ func (r *DataguardBrokerReconciler) createPod(ctx context.Context, req ctrl.Requ
 	if !strings.Contains(out, "Fast-Start Failover: Enabled") {
 		// ## ENABLE FSFO
 		out1, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/${ORACLE_PWD}@${ORACLE_SID} ", dbcommons.EnableFSFOCMD))
+			fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/%s@${ORACLE_SID} ", dbcommons.EnableFSFOCMD, adminPassword))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -598,7 +634,7 @@ func (r *DataguardBrokerReconciler) createPod(ctx context.Context, req ctrl.Requ
 //    Setup the requested DG Configuration
 //#############################################################################
 func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.DataguardBroker, n *dbapi.SingleInstanceDatabase,
-	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	sidbReadyPod corev1.Pod, adminPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
 	log := r.Log.WithValues("setupDataguardBrokerConfiguration", req.NamespacedName)
 
 	for i := 0; i < len(m.Spec.StandbyDatabaseRefs); i++ {
@@ -633,7 +669,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.D
 
 		}
 
-		result := r.setupDataguardBrokerConfigurationForGivenDB(m, standbyDatabase, standbyDatabaseReadyPod, sidbReadyPod, ctx, req)
+		result := r.setupDataguardBrokerConfigurationForGivenDB(m, standbyDatabase, standbyDatabaseReadyPod, sidbReadyPod, ctx, req, adminPassword)
 		if result.Requeue {
 			return result
 		}
@@ -706,7 +742,7 @@ func (r *DataguardBrokerReconciler) patchService(m *dbapi.DataguardBroker, sidbR
 //    Set up DG Configuration for a given StandbyDatabase
 //#############################################################################
 func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(m *dbapi.DataguardBroker, standbyDatabase *dbapi.StandbyDatabase,
-	standbyDatabaseReadyPod corev1.Pod, sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	standbyDatabaseReadyPod corev1.Pod, sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request, adminPassword string) ctrl.Result {
 
 	log := r.Log.WithValues("setupDataguardBrokerConfigurationForGivenDB", req.NamespacedName)
 
@@ -716,7 +752,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 
 	// ## CHECK IF DG CONFIGURATION AVAILABLE ##
 	out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/${ORACLE_PWD}@${PRIMARY_DB_CONN_STR} ", dbcommons.DBShowConfigCMD))
+		fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/%s@${PRIMARY_DB_CONN_STR} ", dbcommons.DBShowConfigCMD, adminPassword))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY
@@ -733,7 +769,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 		if m.Spec.ProtectionMode == "MaxPerformance" {
 			// ## DG CONFIGURATION FOR PRIMARY DB || MODE : MAXPERFORMANCE ##
 			out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-				fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/${ORACLE_PWD}@${PRIMARY_DB_CONN_STR} ", dbcommons.DataguardBrokerMaxPerformanceCMD))
+				fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/%s@${PRIMARY_DB_CONN_STR} ", dbcommons.DataguardBrokerMaxPerformanceCMD, adminPassword))
 			if err != nil {
 				log.Error(err, err.Error())
 				return requeueY
@@ -744,7 +780,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 		} else if m.Spec.ProtectionMode == "MaxAvailability" {
 			// ## DG CONFIGURATION FOR PRIMARY DB || MODE : MAX AVAILABILITY ##
 			out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-				fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/${ORACLE_PWD}@${PRIMARY_DB_CONN_STR} ", dbcommons.DataguardBrokerMaxAvailabilityCMD))
+				fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/%s@${PRIMARY_DB_CONN_STR} ", dbcommons.DataguardBrokerMaxAvailabilityCMD, adminPassword))
 			if err != nil {
 				log.Error(err, err.Error())
 				return requeueY
@@ -759,7 +795,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 
 		// ## SHOW CONFIGURATION DG
 		out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/${ORACLE_PWD}@${PRIMARY_DB_CONN_STR} ", dbcommons.DBShowConfigCMD))
+			fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/%s@${PRIMARY_DB_CONN_STR} ", dbcommons.DBShowConfigCMD, adminPassword))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -786,7 +822,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 	if m.Spec.ProtectionMode == "MaxPerformance" {
 		// ## DG CONFIGURATION FOR PRIMARY DB || MODE : MAXPERFORMANCE ##
 		out, err := dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/${ORACLE_PWD}@%s ", dbcommons.DataguardBrokerAddDBMaxPerformanceCMD, primary))
+			fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/%s@%s ", dbcommons.DataguardBrokerAddDBMaxPerformanceCMD, adminPassword, primary))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -797,7 +833,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 	} else if m.Spec.ProtectionMode == "MaxAvailability" {
 		// ## DG CONFIGURATION FOR PRIMARY DB || MODE : MAX AVAILABILITY ##
 		out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/${ORACLE_PWD}@%s ", dbcommons.DataguardBrokerAddDBMaxAvailabilityCMD, primary))
+			fmt.Sprintf("echo -e  \"%s\"  | dgmgrl sys/%s@%s ", dbcommons.DataguardBrokerAddDBMaxAvailabilityCMD, adminPassword, primary))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -820,8 +856,8 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 	// ## SET PROPERTY FASTSTARTFAILOVERTARGET FOR EACH DATABASE TO ALL OTHER DATABASES IN DG CONFIG .
 	for i := 0; i < len(databases); i++ {
 		out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"EDIT DATABASE %s SET PROPERTY FASTSTARTFAILOVERTARGET=%s \"  | dgmgrl sys/${ORACLE_PWD}@%s ",
-				strings.Split(databases[i], ":")[0], getFSFOTargets(i, databases), primary))
+			fmt.Sprintf("echo -e  \"EDIT DATABASE %s SET PROPERTY FASTSTARTFAILOVERTARGET=%s \"  | dgmgrl sys/%s@%s ",
+				strings.Split(databases[i], ":")[0], adminPassword, getFSFOTargets(i, databases), primary))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -830,8 +866,8 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 		log.Info(out)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"SHOW DATABASE %s FASTSTARTFAILOVERTARGET  \"  | dgmgrl sys/${ORACLE_PWD}@%s ",
-				strings.Split(databases[i], ":")[0], primary))
+			fmt.Sprintf("echo -e  \"SHOW DATABASE %s FASTSTARTFAILOVERTARGET  \"  | dgmgrl sys/%s@%s ",
+				strings.Split(databases[i], ":")[0], adminPassword, primary))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -867,7 +903,7 @@ func getFSFOTargets(index int, databases []string) string {
 //                           SET FSFO TARGETS ACCORDINGLY TO FSFOCONFIG
 //#####################################################################################################
 func (r *DataguardBrokerReconciler) setFSFOTargets(m *dbapi.DataguardBroker, n *dbapi.SingleInstanceDatabase,
-	sidbReadyPod corev1.Pod, ctx context.Context, req ctrl.Request) ctrl.Result {
+	sidbReadyPod corev1.Pod, adminPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
 
 	log := r.Log.WithValues("setFSFOTargets", req.NamespacedName)
 
@@ -901,8 +937,8 @@ func (r *DataguardBrokerReconciler) setFSFOTargets(m *dbapi.DataguardBroker, n *
 		}
 		primary := dbcommons.GetPrimaryDatabase(databases)
 		out, err := dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"EDIT DATABASE %s SET PROPERTY FASTSTARTFAILOVERTARGET=%s \"  | dgmgrl sys/${ORACLE_PWD}@%s ",
-				strategy.SourceDatabaseRef, strategy.TargetDatabaseRefs, primary))
+			fmt.Sprintf("echo -e  \"EDIT DATABASE %s SET PROPERTY FASTSTARTFAILOVERTARGET=%s \"  | dgmgrl sys/%s@%s ",
+				strategy.SourceDatabaseRef, adminPassword, strategy.TargetDatabaseRefs, primary))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -911,7 +947,7 @@ func (r *DataguardBrokerReconciler) setFSFOTargets(m *dbapi.DataguardBroker, n *
 		log.Info(out)
 
 		out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-			fmt.Sprintf("echo -e  \"SHOW DATABASE %s FASTSTARTFAILOVERTARGET  \"  | dgmgrl sys/${ORACLE_PWD}@%s ", strategy.SourceDatabaseRef, primary))
+			fmt.Sprintf("echo -e  \"SHOW DATABASE %s FASTSTARTFAILOVERTARGET  \"  | dgmgrl sys/%s@%s ", strategy.SourceDatabaseRef, adminPassword, primary))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
@@ -927,7 +963,7 @@ func (r *DataguardBrokerReconciler) setFSFOTargets(m *dbapi.DataguardBroker, n *
 //  Switchovers to 'sid' db to make 'sid' db primary
 //#####################################################################################################
 func (r *DataguardBrokerReconciler) SetAsPrimaryDatabase(sidbSid string, targetSid string, m *dbapi.DataguardBroker, n *dbapi.SingleInstanceDatabase,
-	ctx context.Context, req ctrl.Request) ctrl.Result {
+	adminPassword string, ctx context.Context, req ctrl.Request) ctrl.Result {
 
 	log := r.Log.WithValues("SetAsPrimaryDatabase", req.NamespacedName)
 	if targetSid == "" {
@@ -1019,7 +1055,7 @@ func (r *DataguardBrokerReconciler) SetAsPrimaryDatabase(sidbSid string, targetS
 
 	// Connect to 'primarySid' db using dgmgrl and switchover to 'targetSid' db to make 'targetSid' db primary
 	out, err = dbcommons.ExecCommand(r, r.Config, sidbReadyPod.Name, sidbReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
-		fmt.Sprintf("echo -e  \"SWITCHOVER TO %s\"  | dgmgrl sys/${ORACLE_PWD}@%s ", targetSid, primarySid))
+		fmt.Sprintf("echo -e  \"SWITCHOVER TO %s\"  | dgmgrl sys/%s@%s ", targetSid, adminPassword, primarySid))
 	if err != nil {
 		log.Error(err, err.Error())
 		return requeueY

@@ -59,6 +59,14 @@ type DataguardBrokerSpec struct {
 	ProtectionMode    string                           `json:"protectionMode"`
 	NodeSelector      map[string]string                `json:"nodeSelector,omitempty"`
 	FastStartFailOver DataguardBrokerFastStartFailOver `json:"fastStartFailOver,omitempty"`
+	AdminPassword     DataguardBrokerPassword          `json:"adminPassword"`
+}
+
+// DataguardBrokerPassword defines the secret containing Password mapped to secretKey
+type DataguardBrokerPassword struct {
+	SecretName string `json:"secretName,omitempty"`
+	SecretKey  string `json:"secretKey"`
+	KeepSecret bool   `json:"keepSecret"`
 }
 
 type DataguardBrokerFastStartFailOver struct {

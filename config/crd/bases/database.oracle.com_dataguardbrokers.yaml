@@ -55,6 +55,20 @@ spec:
           spec:
             description: DataguardBrokerSpec defines the desired state of DataguardBroker
             properties:
+              adminPassword:
+                description: DataguardBrokerPassword defines the secret containing
+                  Password mapped to secretKey
+                properties:
+                  keepSecret:
+                    type: boolean
+                  secretKey:
+                    type: string
+                  secretName:
+                    type: string
+                required:
+                - keepSecret
+                - secretKey
+                type: object
               fastStartFailOver:
                 properties:
                   enable:
@@ -90,6 +104,7 @@ spec:
                   type: string
                 type: array
             required:
+            - adminPassword
             - primaryDatabaseRef
             - protectionMode
             - standbyDatabaseRefs

@@ -91,8 +91,8 @@ const ArchiveLogFalseCMD string = CreateChkFileCMD + " && " +
 	"echo -e  \"SHUTDOWN IMMEDIATE; \n STARTUP MOUNT; \n ALTER DATABASE NOARCHIVELOG; \n SELECT log_mode FROM v\\$database; \n ALTER DATABASE OPEN;" +
 	" \n ALTER PLUGGABLE DATABASE ALL OPEN; \n ALTER SYSTEM REGISTER;\" | %s && " + RemoveChkFileCMD
 
-const StandbyDatabasePrerequisitesSQL string = "ALTER SYSTEM SET db_create_file_dest='/opt/oracle/oradata/';" +
-	"\nALTER SYSTEM SET db_create_online_log_dest_1='/opt/oracle/oradata/';" +
+const StandbyDatabasePrerequisitesSQL string = "ALTER SYSTEM SET db_create_file_dest='/opt/oracle/oradata/' scope=both;" +
+	"\nALTER SYSTEM SET db_create_online_log_dest_1='/opt/oracle/oradata/' scope=both;" +
 	"\nALTER SYSTEM SWITCH LOGFILE;" +
 	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 GROUP 10 SIZE 200M;" +
 	"\nALTER DATABASE ADD STANDBY LOGFILE THREAD 1 GROUP 11 SIZE 200M;" +
@@ -104,56 +104,57 @@ const StandbyDatabasePrerequisitesSQL string = "ALTER SYSTEM SET db_create_file_
 const StandbyTnsnamesEntry string = `
 ##STANDBYDATABASE_SID## =
 (DESCRIPTION =
-(ADDRESS = (PROTOCOL = TCP)(HOST = ##STANDBYDATABASE_SERVICE_EXPOSED## )(PORT = 1521))
-(CONNECT_DATA =
-(SERVER = DEDICATED)
-(SERVICE_NAME = ##STANDBYDATABASE_SID##)
-)
-)
-`
-const PDBTnsnamesEntry string = `
-##PDB_NAME## =
-(DESCRIPTION =
-(ADDRESS = (PROTOCOL = TCP)(HOST = 0.0.0.0 )(PORT = 1521))
-(CONNECT_DATA =
-(SERVER = DEDICATED)
-(SERVICE_NAME = ##PDB_NAME##)
-)
+  (ADDRESS = (PROTOCOL = TCP)(HOST = ##STANDBYDATABASE_SERVICE_EXPOSED## )(PORT = 1521))
+  (CONNECT_DATA =
+	(SERVER = DEDICATED)
+	(SERVICE_NAME = ##STANDBYDATABASE_SID##)
+  )
 )
 `
 
 const PrimaryTnsnamesEntry string = `
 ${PRIMARY_SID} =
+ (DESCRIPTION =
+   (ADDRESS = (PROTOCOL = TCP)(HOST = ${PRIMARY_IP})(PORT = 1521 ))
+   (CONNECT_DATA =
+     (SERVER = DEDICATED)
+     (SERVICE_NAME = ${PRIMARY_SID})
+   )
+ )
+ `
+
+const PDBTnsnamesEntry string = `
+##PDB_NAME## =
 (DESCRIPTION =
-(ADDRESS = (PROTOCOL = TCP)(HOST = ${PRIMARY_IP})(PORT = 1521 ))
-(CONNECT_DATA =
- (SERVER = DEDICATED)
- (SERVICE_NAME = ${PRIMARY_SID})
-)
+  (ADDRESS = (PROTOCOL = TCP)(HOST = 0.0.0.0 )(PORT = 1521))
+  (CONNECT_DATA =
+	(SERVER = DEDICATED)
+	(SERVICE_NAME = ##PDB_NAME##)
+  )
 )
 `
 
 const ListenerEntry string = `LISTENER = 
 (DESCRIPTION_LIST = 
-(DESCRIPTION = 
-(ADDRESS = (PROTOCOL = IPC)(KEY = EXTPROC1)) 
-(ADDRESS = (PROTOCOL = TCP)(HOST = 0.0.0.0)(PORT = 1521)) 
-)
+  (DESCRIPTION = 
+    (ADDRESS = (PROTOCOL = IPC)(KEY = EXTPROC1)) 
+    (ADDRESS = (PROTOCOL = TCP)(HOST = 0.0.0.0)(PORT = 1521)) 
+  )
 ) 
 SID_LIST_LISTENER =
-(SID_LIST =
-(SID_DESC =
-  (GLOBAL_DBNAME = ${ORACLE_SID^^})
-  (SID_NAME = ${ORACLE_SID^^})
-  (ORACLE_HOME = ${ORACLE_HOME})
-)
-(SID_DESC =
-  (GLOBAL_DBNAME = ${ORACLE_SID^^}_DGMGRL)
-  (SID_NAME = ${ORACLE_SID^^})
-  (ORACLE_HOME = ${ORACLE_HOME})
-  (ENVS="TNS_ADMIN=/opt/oracle/oradata/dbconfig/${ORACLE_SID^^}")
-)
-)
+  (SID_LIST =
+    (SID_DESC =
+      (GLOBAL_DBNAME = ${ORACLE_SID^^})
+      (SID_NAME = ${ORACLE_SID^^})
+      (ORACLE_HOME = ${ORACLE_HOME})
+    )
+    (SID_DESC =
+      (GLOBAL_DBNAME = ${ORACLE_SID^^}_DGMGRL)
+      (SID_NAME = ${ORACLE_SID^^})
+      (ORACLE_HOME = ${ORACLE_HOME})
+      (ENVS="TNS_ADMIN=/opt/oracle/oradata/dbconfig/${ORACLE_SID^^}")
+    )
+  )
 
 DEDICATED_THROUGH_BROKER_LISTENER=ON
 `
