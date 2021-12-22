@@ -853,9 +853,7 @@ func (r *StandbyDatabaseReconciler) validateDBReadiness(m *dbapi.StandbyDatabase
 				eventReason = "Database Unhealthy"
 				eventMsg = "Datafiles exists"
 				m.Status.Status = dbcommons.StatusNotReady
-				m.Status.DatafilesCreated = "true"
 			}
-
 		}
 		r.Recorder.Eventf(m, corev1.EventTypeNormal, eventReason, eventMsg)
 		r.Log.Info(eventMsg)

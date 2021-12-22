@@ -1709,7 +1709,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: phx.ocir.io/oracassandra/operator/standby:0.1.2
+        image: phx.ocir.io/oracassandra/operator/standby:0.1.4
         imagePullPolicy: Always
         name: manager
         ports:

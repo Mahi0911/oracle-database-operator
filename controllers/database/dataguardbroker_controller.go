@@ -857,7 +857,7 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 	for i := 0; i < len(databases); i++ {
 		out, err = dbcommons.ExecCommand(r, r.Config, standbyDatabaseReadyPod.Name, standbyDatabaseReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
 			fmt.Sprintf("echo -e  \"EDIT DATABASE %s SET PROPERTY FASTSTARTFAILOVERTARGET=%s \"  | dgmgrl sys/%s@%s ",
-				strings.Split(databases[i], ":")[0], adminPassword, getFSFOTargets(i, databases), primary))
+				strings.Split(databases[i], ":")[0], getFSFOTargets(i, databases), adminPassword, primary))
 		if err != nil {
 			log.Error(err, err.Error())
 			return requeueY
