@@ -405,7 +405,7 @@ func (r *DataguardBrokerReconciler) instantiatePodSpec(m *dbapi.DataguardBroker,
 					{
 						// Sid used here only for Locking mechanism to work .
 						Name:  "ORACLE_SID",
-						Value: "OBSRVR" + strings.ToUpper(dbcommons.GenerateRandomString(5)),
+						Value: "OBSRVR" + strings.ToUpper(n.Spec.Sid),
 					},
 					{
 						Name: "ORACLE_PWD",
@@ -559,7 +559,7 @@ func (r *DataguardBrokerReconciler) createPod(ctx context.Context, req ctrl.Requ
 		return requeueY
 	}
 
-	if dataguardBrokerReplicasFound > 1 {
+	if dataguardBrokerReplicasFound > 0 {
 		return requeueN
 	}
 
