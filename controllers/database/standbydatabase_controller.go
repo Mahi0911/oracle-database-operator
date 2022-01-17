@@ -157,11 +157,35 @@ func (r *StandbyDatabaseReconciler) Reconcile(ctx context.Context, req ctrl.Requ
 		return result, nil
 	}
 
+	if standbyDatabase.Status.DatafilesCreated != "true" {
+		// Creation of Oracle Wallet for Standby Database credentials
+		result, err = r.createWallet(standbyDatabase, singleInstanceDatabase, ctx, req)
+		if result.Requeue {
+			r.Log.Info("Reconcile queued")
+			return result, nil
+		}
+		if err != nil {
+			r.Log.Info("Spec validation failed")
+			return result, nil
+		}
+	}
+
 	// Validate the Standby Database Readiness
 	result, readyPod := r.validateDBReadiness(standbyDatabase, singleInstanceDatabase, sidbReadyPod, ctx, req)
 	if result.Requeue {
 		r.Log.Info("Reconcile queued")
 		return result, nil
+	}
+
+	// Post DB ready operations
+
+	// Deleting the oracle wallet
+	if standbyDatabase.Status.DatafilesCreated == "true" {
+		result, err = r.deleteWallet(standbyDatabase, singleInstanceDatabase, ctx, req)
+		if result.Requeue {
+			r.Log.Info("Reconcile queued")
+			return result, nil
+		}
 	}
 
 	// update status to Ready after all operations succeed
@@ -409,6 +433,52 @@ func (r *StandbyDatabaseReconciler) instantiatePodSpec(m *dbapi.StandbyDatabase,
 					},
 				},
 			}},
+			InitContainers: []corev1.Container{{
+				Name:    "init-permissions",
+				Image:   n.Spec.Image.PullFrom,
+				Command: []string{"/bin/sh", "-c", fmt.Sprintf("chown %d:%d /opt/oracle/oradata", int(dbcommons.ORACLE_UID), int(dbcommons.ORACLE_GUID))},
+				SecurityContext: &corev1.SecurityContext{
+					// User ID 0 means, root user
+					RunAsUser: func() *int64 { i := int64(0); return &i }(),
+				},
+				VolumeMounts: []corev1.VolumeMount{{
+					MountPath: "/opt/oracle/oradata",
+					Name:      "datamount",
+				}},
+			}, {
+				Name:  "init-wallet",
+				Image: n.Spec.Image.PullFrom,
+				Env: []corev1.EnvVar{
+					{
+						Name:  "ORACLE_SID",
+						Value: strings.ToUpper(m.Spec.Sid),
+					},
+					{
+						Name:  "WALLET_CLI",
+						Value: "mkstore",
+					},
+					{
+						Name:  "WALLET_DIR",
+						Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
+					},
+				},
+				Command: []string{"/bin/sh"},
+				Args: func() []string {
+					edition := n.Spec.Edition
+					if n.Spec.Edition == "" {
+						edition = "enterprise"
+					}
+					return []string{"-c", fmt.Sprintf(dbcommons.InitWalletCMD, edition)}
+				}(),
+				SecurityContext: &corev1.SecurityContext{
+					RunAsUser:  func() *int64 { i := int64(dbcommons.ORACLE_UID); return &i }(),
+					RunAsGroup: func() *int64 { i := int64(dbcommons.ORACLE_GUID); return &i }(),
+				},
+				VolumeMounts: []corev1.VolumeMount{{
+					MountPath: "/opt/oracle/oradata",
+					Name:      "datamount",
+				}},
+			}},
 			Containers: []corev1.Container{{
 				Name:  m.Name,
 				Image: n.Spec.Image.PullFrom,
@@ -483,16 +553,22 @@ func (r *StandbyDatabaseReconciler) instantiatePodSpec(m *dbapi.StandbyDatabase,
 						Name:  "STANDBY_DB",
 						Value: "true",
 					},
-					{
-						Name: "ORACLE_PWD",
-						ValueFrom: &corev1.EnvVarSource{
-							SecretKeyRef: &corev1.SecretKeySelector{
-								LocalObjectReference: corev1.LocalObjectReference{
-									Name: n.Spec.AdminPassword.SecretName,
+					/*
+						{
+							Name: "ORACLE_PWD",
+							ValueFrom: &corev1.EnvVarSource{
+								SecretKeyRef: &corev1.SecretKeySelector{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: n.Spec.AdminPassword.SecretName,
+									},
+									Key: n.Spec.AdminPassword.SecretKey,
 								},
-								Key: n.Spec.AdminPassword.SecretKey,
 							},
 						},
+					*/
+					{
+						Name:  "WALLET_DIR",
+						Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",
 					},
 				},
 			}},
@@ -789,6 +865,132 @@ func (r *StandbyDatabaseReconciler) createPods(m *dbapi.StandbyDatabase,
 	log.Info(" ", m.Name+" Replicas Required : ", replicasReq)
 
 	return requeueN
+}
+
+//#############################################################################
+//    Creating Oracle Wallet
+//#############################################################################
+func (r *StandbyDatabaseReconciler) createWallet(m *dbapi.StandbyDatabase, n *dbapi.SingleInstanceDatabase,
+	ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+
+	// Listing all the pods
+	readyPod, _, availableFinal, _, err := dbcommons.FindPods(r, n.Spec.Image.Version,
+		n.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
+	if err != nil {
+		r.Log.Error(err, err.Error())
+		return requeueY, nil
+	}
+	if readyPod.Name != "" {
+		return requeueN, nil
+	}
+
+	// Wallet is created in persistent volume, hence it only needs to be executed once for all number of pods
+	if len(availableFinal) == 0 {
+		r.Log.Info("Pods are being created, currently no pods available")
+		return requeueY, nil
+	}
+
+	// Iterate through the avaialableFinal (list of pods) to find out the pod whose status is updated about the init containers
+	// If no required pod found then requeue the reconcile request
+	var pod corev1.Pod
+	var podFound bool
+	for _, pod = range availableFinal {
+		// Check if pod status contianer is updated about init containers
+		if len(pod.Status.InitContainerStatuses) > 0 {
+			podFound = true
+			break
+		}
+	}
+	if !podFound {
+		r.Log.Info("No pod has its status updated about init containers. Requeueing...")
+		return requeueY, nil
+	}
+
+	lastInitContIndex := len(pod.Status.InitContainerStatuses) - 1
+
+	// If InitContainerStatuses[<index_of_init_container>].Ready is true, it means that the init container is successful
+	if pod.Status.InitContainerStatuses[lastInitContIndex].Ready {
+		// Init container named "init-wallet" has completed it's execution, hence return and don't requeue
+		return requeueN, nil
+	}
+
+	if pod.Status.InitContainerStatuses[lastInitContIndex].State.Running == nil {
+		// Init container named "init-wallet" is not running, so waiting for it to come in running state requeueing the reconcile request
+		r.Log.Info("Waiting for init-wallet to come in running state...")
+		return requeueY, nil
+	}
+
+	r.Log.Info("Creating Wallet...")
+
+	// Querying the secret
+	r.Log.Info("Querying the database secret ...")
+	secret := &corev1.Secret{}
+	err = r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			r.Log.Info("Secret not found")
+			m.Status.Status = dbcommons.StatusError
+			r.Status().Update(ctx, m)
+			return requeueY, nil
+		}
+		r.Log.Error(err, "Unable to get the secret. Requeueing..")
+		return requeueY, nil
+	}
+
+	// Execing into the pods and creating the wallet
+	adminPassword := string(secret.Data[m.Spec.AdminPassword.SecretKey])
+
+	out, err := dbcommons.ExecCommand(r, r.Config, pod.Name, pod.Namespace, "init-wallet",
+		ctx, req, true, "bash", "-c", fmt.Sprintf("%s && %s && %s",
+			dbcommons.WalletPwdCMD,
+			dbcommons.WalletCreateCMD,
+			fmt.Sprintf(dbcommons.WalletEntriesCMD, adminPassword)))
+	if err != nil {
+		r.Log.Error(err, err.Error())
+		return requeueY, nil
+	}
+	r.Log.Info("Creating wallet entry Output : \n" + out)
+
+	return requeueN, nil
+}
+
+//#############################################################################
+//    Deleting the Oracle Wallet
+//#############################################################################
+func (r *StandbyDatabaseReconciler) deleteWallet(m *dbapi.StandbyDatabase, n *dbapi.SingleInstanceDatabase,
+	ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+
+	// Deleting the secret and then deleting the wallet
+	// If the secret is not found it means that the secret and wallet both are deleted, hence no need to requeue
+	if !m.Spec.AdminPassword.KeepSecret {
+		r.Log.Info("Querying the database secret ...")
+		secret := &corev1.Secret{}
+		err := r.Get(ctx, types.NamespacedName{Name: m.Spec.AdminPassword.SecretName, Namespace: m.Namespace}, secret)
+		if err == nil {
+			err := r.Delete(ctx, secret)
+			if err == nil {
+				r.Log.Info("Deleted the secret : " + m.Spec.AdminPassword.SecretName)
+			}
+		}
+	}
+
+	// Getting the ready pod for the database
+	readyPod, _, _, _, err := dbcommons.FindPods(r, n.Spec.Image.Version,
+		n.Spec.Image.PullFrom, m.Name, m.Namespace, ctx, req)
+	if err != nil {
+		r.Log.Error(err, err.Error())
+		return requeueY, err
+	}
+
+	// Deleting the wallet
+	_, err = dbcommons.ExecCommand(r, r.Config, readyPod.Name, readyPod.Namespace, "",
+		ctx, req, false, "bash", "-c", dbcommons.WalletDeleteCMD)
+	if err != nil {
+		r.Log.Error(err, err.Error())
+		return requeueY, nil
+	}
+	r.Log.Info("Wallet Deleted !!")
+	return requeueN, nil
 }
 
 //#############################################################################
