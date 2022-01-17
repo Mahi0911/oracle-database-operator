@@ -1063,6 +1063,7 @@ func (r *StandbyDatabaseReconciler) validateDBReadiness(m *dbapi.StandbyDatabase
 		return requeueY, readyPod
 	}
 	if m.Status.DatafilesCreated != "true" {
+		// Change Tnsnames, Listener on Standby db after standby pod becomes ready
 		result := r.setupNetworkConfiguration(m, n, sidbReadyPod, readyPod, ctx, req)
 		if result.Requeue {
 			return result, readyPod
