@@ -726,13 +726,13 @@ func (r *DataguardBrokerReconciler) patchService(m *dbapi.DataguardBroker, sidbR
 
 		if m.Spec.LoadBalancer {
 			if len(svc.Status.LoadBalancer.Ingress) > 0 {
-				m.Status.ExternalConnectString = svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(primarySid)
+				m.Status.ExternalConnectString = svc.Status.LoadBalancer.Ingress[0].IP + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/DATAGUARD"
 			}
-			m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(primarySid)
+			m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/DATAGUARD"
 		} else {
 			nodeip := dbcommons.GetNodeIp(r, ctx, req)
-			m.Status.ExternalConnectString = nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/" + strings.ToUpper(primarySid)
-			m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/" + strings.ToUpper(primarySid)
+			m.Status.ExternalConnectString = nodeip + ":" + fmt.Sprint(svc.Spec.Ports[0].NodePort) + "/DATAGUARD"
+			m.Status.ClusterConnectString = svc.Name + "." + svc.Namespace + ":" + fmt.Sprint(svc.Spec.Ports[0].Port) + "/DATAGUARD"
 		}
 	}
 	return requeueN
