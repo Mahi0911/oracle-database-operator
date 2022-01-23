@@ -713,7 +713,12 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
       Role:                     PHYSICAL_STANDBY
       Status:                   Healthy
       Version:                  19.3.0.0.0
-    Events:                     <none>
+    Events:
+      Type    Reason              Age                From             Message
+      ----    ------              ----               ----             -------
+      Normal  Waiting             58m (x7 over 60m)  StandbyDatabase  Waiting for sidb-sample to be Ready
+      Normal  Database Unhealthy  57m (x4 over 58m)  StandbyDatabase  Datafiles exists
+      Normal  Database Ready      57m (x2 over 57m)  StandbyDatabase 
 
   ```
 
@@ -768,9 +773,9 @@ $ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.statu
   The following attributes cannot be patched post StandbyDatabase instance Creation : sid, persistence.
 
   ```sh
-  $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabase sidb-sample 
+  $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch standbydatabase sidb-sample 
 
-    The SingleInstanceDatabase "sidb-sample" is invalid: spec.sid: Forbidden: cannot be changed
+    The StandbyDatabase "standby-sample" is invalid: spec.sid: Forbidden: cannot be changed
   ```
 
 ## Kind DataguardBroker Resource
@@ -779,6 +784,8 @@ $ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.statu
 
 * ### DataguardBroker Sample YAML
   
+  After you have created standbys, now configure dataguard broker for standbys and primary databases by mentioning the dataguard sample yaml.
+
   For the use cases detailed below a sample .yaml file is available at
   [config/samples/sidb/dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml)
 
@@ -800,112 +807,148 @@ $ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.statu
   ```sh
   $ kubectl get dataguardbroker dgbroker-sample
 
-    NAME       PRIMARY   STANDBYS        PROTECTION MODE      CONNECT STR                    PRIMARY DATABASE
-    dg19c-1    ORCL      ORCLS           MaxAvailability      100.96.226.85:31555/OR19E1S2   sidb-19c-1
+    NAME       PRIMARY   STANDBYS               PROTECTION MODE      CONNECT STR                       PRIMARY DATABASE
+    dg19c-1    ORCL      ORCLS1,ORCLS2          MaxAvailability      100.96.226.85:31555/DATAGUARD     sidb-19c-1
 
   ```
 
 * ### Detailed Status
 
   ```sh
-  $ kubectl describe singleinstancedatabase sidb-sample-clone
+  $ kubectl describe dataguardbroker dgbroker-sample
 
-    Name:         stby-19c-1-1
+    Name:         dg-19c-1
     Namespace:    default
     Labels:       <none>
     Annotations:  <none>
     API Version:  database.oracle.com/v1alpha1
-    Kind:         StandbyDatabase
+    Kind:         DataguardBroker
     Metadata:
-      Creation Timestamp:  2022-01-17T07:01:46Z
+      Creation Timestamp:  2022-01-23T04:29:04Z
       Finalizers:
-        database.oracle.com/standbyfinalizer
-      Generation:  1
+        database.oracle.com/dataguardbrokerfinalizer
+      Generation:  3
       Managed Fields:
         API Version:  database.oracle.com/v1alpha1
         Fields Type:  FieldsV1
         fieldsV1:
-          ......
-        Manager:         manager
+          ...
+        Manager:      manager
+        Operation:    Update
+        Time:         2022-01-23T04:30:20Z
+        API Version:  database.oracle.com/v1alpha1
+        Fields Type:  FieldsV1
+        fieldsV1:
+          ...
+        Manager:         kubectl-client-side-apply
         Operation:       Update
-        Time:            2022-01-17T07:29:24Z
-      Resource Version:  71932766
-      UID:               d9a1d700-c6ea-44d7-ac07-435cce3d7c8d
+        Time:            2022-01-23T04:44:40Z
+      Resource Version:  75178376
+      UID:               c04a3d88-2018-4f7f-b232-b74d6c3d9479
     Spec:
       Admin Password:
         Keep Secret:  true
         Secret Key:   oracle_pwd
         Secret Name:  db-secret
-      Persistence:
-        Access Mode:         ReadWriteMany
-        Size:                100Gi
-        Storage Class:       
-      Primary Database Ref:  sidb-sample
-      Replicas:              2
-      Sid:                   ORCLS
+      Fast Start Fail Over:
+        Enable:                 true
+      Primary Database Ref:     sidb-19c-1
+      Protection Mode:          MaxAvailability
+      Set As Primary Database:  
+      Standby Database Refs:
+        standby-sample-1
+        standby-sample-2
     Status:
-      Cluster Connect String:   standby-sample.default:1521/ORCLS
-      Datafiles Created:        true
-      External Connect String:  100.96.226.85:31044/ORCLS
-      Role:                     PHYSICAL_STANDBY
-      Status:                   Healthy
-      Version:                  19.3.0.0.0
-    Events:                     <none>
-
+      Cluster Connect String:   dg-19c-1.default:1521/DATAGUARD
+      External Connect String:  100.96.226.85:31167/DATAGUARD
+      Primary Database:         OR19E3
+      Standby Databases:        OR19E3S1,OR19E3S2
+    Events:
+      Type    Reason                       Age                 From             Message
+      ----    ------                       ----                ----             -------
+      Normal  SUCCESS                      42m                 DataguardBroker  
+      Normal  Observer Pending             42m                 DataguardBroker  Waiting for Observer to be ready
+      Normal  Observer Ready               41m (x2 over 41m)   DataguardBroker  
+      Normal  Waiting                      30m (x6 over 37m)   DataguardBroker  Waiting for sidb-sample to be Ready
+      Normal  Observer Initialised         25m (x7 over 41m)   DataguardBroker  Waiting for Observer to be ready
+      Normal  DG Configuration up to date  24m (x13 over 56m)  DataguardBroker  
   ```
 
-## Provision New Standby Database for a Single Instance Database
+## Setup Dataguard Broker Configuration for a Single Instance Database
 
-  Provision a new standby database instance for a single instance database(`.spec.primaryDatabaseRef`) by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
+  Provision a new Dataguard Broker Custom Resource for a single instance database(`.spec.primaryDatabaseRef`) by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
 
   ```sh
-  $ kubectl create -f standbydatabase.yaml
+  $ kubectl create -f dataguardbroker.yaml
   
-    standbydatabase.database.oracle.com/standbydatabase-sample created
+    dataguardbroker.database.oracle.com/dgbroker-sample created
   ```
 
-* ### Creation Status
+* ### Dataguard Broker Status
   
- Creating a new standby database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections.
+ Configuring Dataguard Broker takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections.
 
   ```sh
-$ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.status}"
+$ kubectl get dataguardbroker dgbroker-sample -o "jsonpath={.status.status}"
    
   Healthy
 ```
   
-* ### Connection Information
+* ### Connection Information for Primary Database
 
-  External and internal (running in Kubernetes pods) clients can connect to the database using .status.connectString and .status.clusterConnectString
+  External and internal (running in Kubernetes pods) clients can connect to the primary database using .status.connectString and .status.clusterConnectString
   respectively in the following command
 
   ```sh
-  $ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.connectString}"
+  $ kubectl get dataguardbroker dgbroker-sample -o "jsonpath={.status.externalConnectString}"
 
-    144.25.10.119:1521/ORCL
+    144.25.10.119:1521/DATAGUARD
   ```
 
-  The Oracle Database inside the container also has Oracle Enterprise Manager Express configured. To access OEM Express, start the browser and follow the URL:
+* ### Set any database as Primary Database
+
+  Mention sid of the any databases (Sid of one of `.spec.primaryDatabaseRef` , `.spec.standbyDatabaseRefs[]`) to be set primary in the `.spec.setAsPrimaryDatabase` of [dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml) and apply the yaml file.
+  
+  The database will be set to primary. Ignored if the database is already primary
 
   ```sh
-  $ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.oemExpressUrl}"
+  $ kubectl apply -f dataguardbroker.yaml
+  
+    dataguardbroker.database.oracle.com/dgbroker-sample apply
 
-    https://144.25.10.119:5500/em
   ```
 
-* ### Multiple Replicas
-  
-  Multiple database pod replicas can be provisioned when the persistent volume access mode is ReadWriteMany. Database is open and mounted by one of the replicas. Other replicas will have instance started but not mounted and serve to provide quick cold fail-over in case the active pod dies. Update the replica attribute in the .yaml and apply using the kubectl apply command or edit/patch commands
+* ### Set Fast Start Fail Over (FSFO) Targets for a database
 
-  Note: This functionality requires the [K8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s)
-        Pre-built images from container-registry.oracle.com include the K8s extension
+  Mention sid of databases to be set as FSFO targets in `.spec.fastStartFailOver.strategy.targetDatabaseRefs` seperated by a comma "," for a particular database sid `.spec.fastStartFailOver.strategy.sourceDatabaseRef` and apply the yaml file.
+
+  ```sh
+  $ kubectl apply -f dataguardbroker.yaml
+  
+    dataguardbroker.database.oracle.com/dgbroker-sample apply
+
+  ```
+
+  **Note:** If for a particular database, FSFO targets are not menioned, all other databases in the dataguard configuration are set as FSFO targets.
+
+* ### Enable Fast Start Fail Over
+
+  Enabling Fast Start Fail Over would bring up a observer pod which observes the primary database and performs a automatic failover to one of the FSFO targets, when connection to the primary database is lost and automatically reinstate a failed primary as a standby..
+
+  Patch or apply to set `.spec.fastStartFailOver.enable` to true
+
+  ```sh
+  $ kubectl --type=merge -p '{"spec":{".spec.fastStartFailOver.enable":"true"}}' patch dataguardbroker dgbroker-sample 
+
+    dataguardbroker.database.oracle.com/dgbroker-sample patched
+  ```
 
 * ### Patch Attributes
 
-  The following attributes cannot be patched post StandbyDatabase instance Creation : sid, persistence.
+  The following attributes cannot be patched post DataguardBroker resource Creation : primaryDatabaseRef, loadBalancer.
 
   ```sh
-  $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabase sidb-sample 
+  $ kubectl --type=merge -p '{"spec":{"primaryDatabaseRef":"ORCL"}}' patch dataguardbroker dgbroker-sample 
 
-    The SingleInstanceDatabase "sidb-sample" is invalid: spec.sid: Forbidden: cannot be changed
+    The DataguardBroker "dgbroker-sample" is invalid: spec.sid: Forbidden: cannot be changed
   ```
