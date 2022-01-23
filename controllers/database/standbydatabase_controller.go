@@ -1180,6 +1180,24 @@ func (r *StandbyDatabaseReconciler) setupNetworkConfiguration(m *dbapi.StandbyDa
 		}
 
 	}
+
+	flashBackStatus, _, _, result := dbcommons.CheckDBConfig(standbyReadyPod, r, r.Config, ctx, req, n.Spec.Edition)
+	if result.Requeue {
+		return result
+	}
+
+	// Turn on FlashBack on Standby. ArchiveLog, ForceLog would be turned ON by default from primary database
+	if !flashBackStatus {
+		out, err = dbcommons.ExecCommand(r, r.Config, standbyReadyPod.Name, standbyReadyPod.Namespace, "", ctx, req, false, "bash", "-c",
+			fmt.Sprintf("echo -e  \"%s\"  | %s", dbcommons.FlashBackTrueSQL, dbcommons.GetSqlClient(n.Spec.Edition)))
+		if err != nil {
+			log.Error(err, err.Error())
+			return requeueY
+		}
+		log.Info("FlashBackTrue Output")
+		log.Info(out)
+	}
+
 	return requeueN
 }
 
