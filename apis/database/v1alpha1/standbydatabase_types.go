@@ -84,6 +84,8 @@ type StandbyDatabaseStatus struct {
 
 	Role                  string `json:"role,omitempty"`
 	Status                string `json:"status,omitempty"`
+	Sid                   string `json:"sid,omitempty"`
+	PrimaryDatabaseRef    string `json:"primaryDatabaseRef,omitempty"`
 	Version               string `json:"version,omitempty"`
 	ExternalConnectString string `json:"externalConnectString,omitempty"`
 	ClusterConnectString  string `json:"clusterConnectString,omitempty"`

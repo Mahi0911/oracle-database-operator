@@ -289,7 +289,10 @@ spec:
               externalConnectString:
                 type: string
               primaryDatabase:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state of cluster Important: Run "make" to regenerate code after modifying this file'
+                type: string
+              primaryDatabaseRef:
+                type: string
+              protectionMode:
                 type: string
               standbyDatabases:
                 type: string
@@ -1279,7 +1282,11 @@ spec:
                 type: boolean
               externalConnectString:
                 type: string
+              primaryDatabaseRef:
+                type: string
               role:
+                type: string
+              sid:
                 type: string
               status:
                 type: string
@@ -1713,7 +1720,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: phx.ocir.io/oracassandra/operator/standby:0.1.7
+        image: phx.ocir.io/oracassandra/operator/standby:0.1.8
         imagePullPolicy: Always
         name: manager
         ports:
@@ -1776,6 +1783,27 @@ webhooks:
     service:
       name: oracle-database-operator-webhook-service
       namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-dataguardbroker
+  failurePolicy: Fail
+  name: mdataguardbroker.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dataguardbrokers
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
       path: /mutate-database-oracle-com-v1alpha1-oraclerestdataservice
   failurePolicy: Fail
   name: moraclerestdataservice.kb.io
@@ -1811,6 +1839,27 @@ webhooks:
     resources:
     - singleinstancedatabases
   sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /mutate-database-oracle-com-v1alpha1-standbydatabase
+  failurePolicy: Fail
+  name: mstandbydatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - standbydatabases
+  sideEffects: None
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
@@ -1819,6 +1868,27 @@ metadata:
     cert-manager.io/inject-ca-from: oracle-database-operator-system/oracle-database-operator-serving-cert
   name: oracle-database-operator-validating-webhook-configuration
 webhooks:
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-dataguardbroker
+  failurePolicy: Fail
+  name: vdataguardbroker.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - dataguardbrokers
+  sideEffects: None
 - admissionReviewVersions:
   - v1
   - v1beta1
@@ -1861,4 +1931,25 @@ webhooks:
     - DELETE
     resources:
     - singleinstancedatabases
+  sideEffects: None
+- admissionReviewVersions:
+  - v1
+  - v1beta1
+  clientConfig:
+    service:
+      name: oracle-database-operator-webhook-service
+      namespace: oracle-database-operator-system
+      path: /validate-database-oracle-com-v1alpha1-standbydatabase
+  failurePolicy: Fail
+  name: vstandbydatabase.kb.io
+  rules:
+  - apiGroups:
+    - database.oracle.com
+    apiVersions:
+    - v1alpha1
+    operations:
+    - CREATE
+    - UPDATE
+    resources:
+    - standbydatabases
   sideEffects: None

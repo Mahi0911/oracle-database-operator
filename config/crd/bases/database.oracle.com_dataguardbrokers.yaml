@@ -118,9 +118,10 @@ spec:
               externalConnectString:
                 type: string
               primaryDatabase:
-                description: 'INSERT ADDITIONAL STATUS FIELD - define observed state
-                  of cluster Important: Run "make" to regenerate code after modifying
-                  this file'
+                type: string
+              primaryDatabaseRef:
+                type: string
+              protectionMode:
                 type: string
               standbyDatabases:
                 type: string

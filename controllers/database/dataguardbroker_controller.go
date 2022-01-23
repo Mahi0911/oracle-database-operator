@@ -1189,6 +1189,9 @@ func (r *DataguardBrokerReconciler) updateReconcileStatus(m *dbapi.DataguardBrok
 		m.Status.PrimaryDatabase = primaryDatabase
 		m.Status.StandbyDatabases = standbyDatabases
 	}
+
+	m.Status.PrimaryDatabaseRef = m.Spec.PrimaryDatabaseRef
+	m.Status.ProtectionMode = m.Spec.PrimaryDatabaseRef
 	return
 }
 

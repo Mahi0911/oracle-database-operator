@@ -1000,6 +1000,8 @@ func (r *StandbyDatabaseReconciler) updateReconcileStatus(m *dbapi.StandbyDataba
 	if err == nil {
 		m.Status.Version = version
 	}
+	m.Status.Sid = m.Spec.Sid
+	m.Status.PrimaryDatabaseRef = m.Spec.PrimaryDatabaseRef
 	return
 }
 

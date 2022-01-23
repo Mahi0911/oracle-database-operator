@@ -147,6 +147,14 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "DataguardBroker")
 		os.Exit(1)
 	}
+	if err = (&databasev1alpha1.StandbyDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "StandbyDatabase")
+		os.Exit(1)
+	}
+	if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	// Set RECONCILE_INTERVAL environment variable if you want to change the default value from 15 secs
@@ -161,6 +169,14 @@ func main() {
 	if os.Getenv("ENABLE_WEBHOOKS") != "false" {
 		if err = (&databasev1alpha1.SingleInstanceDatabase{}).SetupWebhookWithManager(mgr); err != nil {
 			setupLog.Error(err, "unable to create webhook", "webhook", "SingleInstanceDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.StandbyDatabase{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "StandbyDatabase")
+			os.Exit(1)
+		}
+		if err = (&databasev1alpha1.DataguardBroker{}).SetupWebhookWithManager(mgr); err != nil {
+			setupLog.Error(err, "unable to create webhook", "webhook", "DataguardBroker")
 			os.Exit(1)
 		}
 		if err = (&databasev1alpha1.OracleRestDataService{}).SetupWebhookWithManager(mgr); err != nil {

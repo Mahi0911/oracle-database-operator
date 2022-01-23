@@ -43,6 +43,8 @@ import (
 )
 
 // EDIT THIS FILE!  THIS IS SCAFFOLDING FOR YOU TO OWN!
+// Command to create webhook.
+// $ kubebuilder create webhook --group database --version v1alpha1 --kind DataguardBroker --defaulting --programmatic-validation
 // NOTE: json tags are required.  Any new fields you add must have json tags for the fields to be serialized.
 
 // DataguardBrokerSpec defines the desired state of DataguardBroker
@@ -84,6 +86,9 @@ type DataguardBrokerStrategy struct {
 type DataguardBrokerStatus struct {
 	// INSERT ADDITIONAL STATUS FIELD - define observed state of cluster
 	// Important: Run "make" to regenerate code after modifying this file
+
+	PrimaryDatabaseRef    string `json:"primaryDatabaseRef,omitempty"`
+	ProtectionMode        string `json:"protectionMode,omitempty"`
 	PrimaryDatabase       string `json:"primaryDatabase,omitempty"`
 	StandbyDatabases      string `json:"standbyDatabases,omitempty"`
 	ExternalConnectString string `json:"externalConnectString,omitempty"`
