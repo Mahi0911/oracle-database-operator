@@ -88,6 +88,7 @@ type StandbyDatabaseStatus struct {
 	ExternalConnectString string `json:"externalConnectString,omitempty"`
 	ClusterConnectString  string `json:"clusterConnectString,omitempty"`
 	DatafilesCreated      string `json:"datafilesCreated,omitempty"`
+	DgBrokerConfigured    bool   `json:"dgBrokerConfigured,omitempty"`
 }
 
 //+kubebuilder:object:root=true
@@ -95,8 +96,8 @@ type StandbyDatabaseStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.status",name="Status",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.version",name="Version",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.role",name="Role",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.clusterConnectString",name="Cluster Connect Str",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.externalConnectString",name="External Connect Str",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.clusterConnectString",name="Cluster Connect Str",type="string",priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.externalConnectString",name="Connect Str",type="string"
 // +kubebuilder:printcolumn:JSONPath=".spec.primaryDatabaseRef",name="Primary Database",type="string"
 
 // StandbyDatabase is the Schema for the standbydatabases API

@@ -28,9 +28,10 @@ spec:
       type: string
     - jsonPath: .status.clusterConnectString
       name: Cluster Connect Str
+      priority: 1
       type: string
     - jsonPath: .status.externalConnectString
-      name: External Connect Str
+      name: Connect Str
       type: string
     - jsonPath: .spec.primaryDatabaseRef
       name: Primary Database

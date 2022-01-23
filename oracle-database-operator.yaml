@@ -204,9 +204,10 @@ spec:
       type: string
     - jsonPath: .status.clusterConnectString
       name: Cluster Connect Str
+      priority: 1
       type: string
     - jsonPath: .status.externalConnectString
-      name: External Connect Str
+      name: Connect Str
       type: string
     - jsonPath: .spec.primaryDatabaseRef
       name: Primary Database
@@ -1195,9 +1196,10 @@ spec:
       type: string
     - jsonPath: .status.clusterConnectString
       name: Cluster Connect Str
+      priority: 1
       type: string
     - jsonPath: .status.externalConnectString
-      name: External Connect Str
+      name: Connect Str
       type: string
     - jsonPath: .spec.primaryDatabaseRef
       name: Primary Database
@@ -1273,6 +1275,8 @@ spec:
                 type: string
               datafilesCreated:
                 type: string
+              dgBrokerConfigured:
+                type: boolean
               externalConnectString:
                 type: string
               role:
@@ -1709,7 +1713,7 @@ spec:
         - --enable-leader-election
         command:
         - /manager
-        image: phx.ocir.io/oracassandra/operator/standby:0.1.6
+        image: phx.ocir.io/oracassandra/operator/standby:0.1.7
         imagePullPolicy: Always
         name: manager
         ports:

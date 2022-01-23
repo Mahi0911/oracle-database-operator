@@ -652,6 +652,12 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfiguration(m *dbapi.D
 			return requeueY
 		}
 
+		// Check if dataguard broker is already configured for the standby database
+		if standbyDatabase.Status.DgBrokerConfigured {
+			log.Info("Dataguard broker for standbyDatabase : " + standbyDatabase.Name + " is already configured")
+			continue
+		}
+
 		// ## FETCH THE STANDBY REPLICAS .
 		standbyDatabaseReadyPod, _, _, _, err := dbcommons.FindPods(r, n.Spec.Image.Version,
 			n.Spec.Image.PullFrom, standbyDatabase.Name, standbyDatabase.Namespace, ctx, req)
@@ -803,6 +809,9 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 			log.Info("ShowConfiguration Output")
 			log.Info(out)
 		}
+		// Set DG Configured status to true for this standbyDatabase. so that in next reconcilation, we dont configure this again
+		standbyDatabase.Status.DgBrokerConfigured = true
+		r.Status().Update(ctx, standbyDatabase)
 		return requeueN
 	}
 
@@ -876,6 +885,10 @@ func (r *DataguardBrokerReconciler) setupDataguardBrokerConfigurationForGivenDB(
 		log.Info(out)
 
 	}
+
+	// Set DG Configured status to true for this standbyDatabase. so that in next reconcilation, we dont configure this again
+	standbyDatabase.Status.DgBrokerConfigured = true
+	r.Status().Update(ctx, standbyDatabase)
 
 	return requeueN
 }

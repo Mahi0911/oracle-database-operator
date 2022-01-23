@@ -553,19 +553,6 @@ func (r *StandbyDatabaseReconciler) instantiatePodSpec(m *dbapi.StandbyDatabase,
 						Name:  "STANDBY_DB",
 						Value: "true",
 					},
-					/*
-						{
-							Name: "ORACLE_PWD",
-							ValueFrom: &corev1.EnvVarSource{
-								SecretKeyRef: &corev1.SecretKeySelector{
-									LocalObjectReference: corev1.LocalObjectReference{
-										Name: n.Spec.AdminPassword.SecretName,
-									},
-									Key: n.Spec.AdminPassword.SecretKey,
-								},
-							},
-						},
-					*/
 					{
 						Name:  "WALLET_DIR",
 						Value: "/opt/oracle/oradata/dbconfig/$(ORACLE_SID)/.wallet",

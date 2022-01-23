@@ -95,8 +95,8 @@ type DataguardBrokerStatus struct {
 // +kubebuilder:printcolumn:JSONPath=".status.primaryDatabase",name="Primary",type="string"
 // +kubebuilder:printcolumn:JSONPath=".status.standbyDatabases",name="Standbys",type="string"
 // +kubebuilder:printcolumn:JSONPath=".spec.protectionMode",name="Protection Mode",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.clusterConnectString",name="Cluster Connect Str",type="string"
-// +kubebuilder:printcolumn:JSONPath=".status.externalConnectString",name="External Connect Str",type="string"
+// +kubebuilder:printcolumn:JSONPath=".status.clusterConnectString",name="Cluster Connect Str",type="string",priority=1
+// +kubebuilder:printcolumn:JSONPath=".status.externalConnectString",name="Connect Str",type="string"
 // +kubebuilder:printcolumn:JSONPath=".spec.primaryDatabaseRef",name="Primary Database",type="string"
 
 // DataguardBroker is the Schema for the dataguardbrokers API

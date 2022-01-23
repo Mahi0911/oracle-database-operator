@@ -7,7 +7,7 @@ Oracle Database Operator for Kubernetes (the operator) includes the Single Insta
 * [Provision New Database](#provision-new-database)
 * [Clone Existing Database](#clone-existing-database)
 * [Patch/Rollback Database](#patchrollback-database)
-* [Kind OracleRestDataService](#kind-oraclerestdataservice)
+* [Kind OracleRestDataService Resource](#kind-oraclerestdataservice-resource)
 * [REST Enable Database](#rest-enable-database)
 
 ## Prerequisites
@@ -280,7 +280,7 @@ $ kubectl get singleinstancedatabase sidb-sample -o "jsonpath={.status.status}"
     19.3.0.0.0 (29517242)
   ```
   
-## Kind OracleRestDataService
+## Kind OracleRestDataService Resource
 
 The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a custom resource that enables RESTful API access to the Oracle Database in K8s
 
@@ -630,3 +630,282 @@ The Oracle Database Operator creates the OracleRestDataService (ORDS) kind as a 
     The following attributes cannot be patched post SingleInstanceDatabase instance Creation : databaseRef, loadBalancer, image, ordsPassword, adminPassword, apexPassword.
 
   * A schema can be rest enabled or disabled by setting the `.spec.restEnableSchemas[].enable` to true or false respectively in ords sample .yaml file and apply using the kubectl apply command or edit/patch commands. This requires `.spec.ordsPassword` secret.
+
+## Kind StandbyDatabase Resource
+
+  The Oracle Database Operator creates the StandbyDatabase kind as a custom resource that enables Oracle Database to be managed as a native Kubernetes object
+
+* ### Prerequisite
+
+  Turn on ArchiveLog, FlashBack, ForceLog on Single Instance Database(Primary) before creating a standby.
+
+* ### StandbyDatabase Sample YAML
+  
+  For the use cases detailed below a sample .yaml file is available at
+  * Enterprise, Standard Editions
+  [config/samples/sidb/standbydatabase.yaml](./../../config/samples/sidb/standbydatabase.yaml)
+
+  **Note:** The `adminPassword` field of the above `standbydatabase.yaml` yaml contains a Admin Password secret of primary database ref for Standby Database creation. This secret gets deleted after the database pod becomes ready for security reasons.  
+
+  More info on creating Kubernetes Secret available at [https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/)
+
+* ### List Standby Databases
+
+  ```sh
+  $ kubectl get standbydatabase -o name
+
+    standbydatabase.database.oracle.com/standby-sample
+
+  ```
+
+* ### Quick Status
+  
+  ```sh
+  $ kubectl get standbydatabase sidb-sample
+
+    NAME             STATUS    VERSION      ROLE                 EXTERNAL CONNECT STR            PRIMARY DATABASE
+    standby-sample   Healthy   19.3.0.0.0   PHYSICAL_STANDBY     100.96.226.85:31044/OR19E3S1    sidb-sample
+
+  ```
+
+* ### Detailed Status
+
+  ```sh
+  $ kubectl describe singleinstancedatabase sidb-sample-clone
+
+    Name:         stby-19c-1-1
+    Namespace:    default
+    Labels:       <none>
+    Annotations:  <none>
+    API Version:  database.oracle.com/v1alpha1
+    Kind:         StandbyDatabase
+    Metadata:
+      Creation Timestamp:  2022-01-17T07:01:46Z
+      Finalizers:
+        database.oracle.com/standbyfinalizer
+      Generation:  1
+      Managed Fields:
+        API Version:  database.oracle.com/v1alpha1
+        Fields Type:  FieldsV1
+        fieldsV1:
+          ......
+        Manager:         manager
+        Operation:       Update
+        Time:            2022-01-17T07:29:24Z
+      Resource Version:  71932766
+      UID:               d9a1d700-c6ea-44d7-ac07-435cce3d7c8d
+    Spec:
+      Admin Password:
+        Keep Secret:  true
+        Secret Key:   oracle_pwd
+        Secret Name:  db-secret
+      Persistence:
+        Access Mode:         ReadWriteMany
+        Size:                100Gi
+        Storage Class:       
+      Primary Database Ref:  sidb-sample
+      Replicas:              2
+      Sid:                   ORCLS
+    Status:
+      Cluster Connect String:   standby-sample.default:1521/ORCLS
+      Datafiles Created:        true
+      External Connect String:  100.96.226.85:31044/ORCLS
+      Role:                     PHYSICAL_STANDBY
+      Status:                   Healthy
+      Version:                  19.3.0.0.0
+    Events:                     <none>
+
+  ```
+
+## Provision New Standby Database for a Single Instance Database
+
+  Provision a new standby database instance for a single instance database(`.spec.primaryDatabaseRef`) by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
+
+  ```sh
+  $ kubectl create -f standbydatabase.yaml
+  
+    standbydatabase.database.oracle.com/standbydatabase-sample created
+  ```
+
+* ### Creation Status
+  
+ Creating a new standby database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections.
+
+  ```sh
+$ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.status}"
+   
+  Healthy
+```
+  
+* ### Connection Information
+
+  External and internal (running in Kubernetes pods) clients can connect to the database using .status.connectString and .status.clusterConnectString
+  respectively in the following command
+
+  ```sh
+  $ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.connectString}"
+
+    144.25.10.119:1521/ORCL
+  ```
+
+  The Oracle Database inside the container also has Oracle Enterprise Manager Express configured. To access OEM Express, start the browser and follow the URL:
+
+  ```sh
+  $ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.oemExpressUrl}"
+
+    https://144.25.10.119:5500/em
+  ```
+
+* ### Multiple Replicas
+  
+  Multiple database pod replicas can be provisioned when the persistent volume access mode is ReadWriteMany. Database is open and mounted by one of the replicas. Other replicas will have instance started but not mounted and serve to provide quick cold fail-over in case the active pod dies. Update the replica attribute in the .yaml and apply using the kubectl apply command or edit/patch commands
+
+  Note: This functionality requires the [K8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s)
+        Pre-built images from container-registry.oracle.com include the K8s extension
+
+* ### Patch Attributes
+
+  The following attributes cannot be patched post StandbyDatabase instance Creation : sid, persistence.
+
+  ```sh
+  $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabase sidb-sample 
+
+    The SingleInstanceDatabase "sidb-sample" is invalid: spec.sid: Forbidden: cannot be changed
+  ```
+
+## Kind DataguardBroker Resource
+
+  The Oracle Database Operator creates the DataguardBroker kind as a custom resource that enables Oracle Database to be managed as a native Kubernetes object
+
+* ### DataguardBroker Sample YAML
+  
+  For the use cases detailed below a sample .yaml file is available at
+  [config/samples/sidb/dataguardbroker.yaml](./../../config/samples/sidb/dataguardbroker.yaml)
+
+  **Note:** The `adminPassword` field of the above `dataguardbroker.yaml` yaml contains a Admin Password secret of primary database ref for Dataguard configuration and observer creation. This secret gets deleted after the database pod becomes ready for security reasons.  
+
+  More info on creating Kubernetes Secret available at [https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/](https://kubernetes.io/docs/tasks/configmap-secret/managing-secret-using-kubectl/)
+
+* ### List Dataguard Broker
+
+  ```sh
+  $ kubectl get dataguardbroker -o name
+
+    dataguardbroker.database.oracle.com/dgbroker-sample
+
+  ```
+
+* ### Quick Status
+  
+  ```sh
+  $ kubectl get dataguardbroker dgbroker-sample
+
+    NAME       PRIMARY   STANDBYS        PROTECTION MODE      CONNECT STR                    PRIMARY DATABASE
+    dg19c-1    ORCL      ORCLS           MaxAvailability      100.96.226.85:31555/OR19E1S2   sidb-19c-1
+
+  ```
+
+* ### Detailed Status
+
+  ```sh
+  $ kubectl describe singleinstancedatabase sidb-sample-clone
+
+    Name:         stby-19c-1-1
+    Namespace:    default
+    Labels:       <none>
+    Annotations:  <none>
+    API Version:  database.oracle.com/v1alpha1
+    Kind:         StandbyDatabase
+    Metadata:
+      Creation Timestamp:  2022-01-17T07:01:46Z
+      Finalizers:
+        database.oracle.com/standbyfinalizer
+      Generation:  1
+      Managed Fields:
+        API Version:  database.oracle.com/v1alpha1
+        Fields Type:  FieldsV1
+        fieldsV1:
+          ......
+        Manager:         manager
+        Operation:       Update
+        Time:            2022-01-17T07:29:24Z
+      Resource Version:  71932766
+      UID:               d9a1d700-c6ea-44d7-ac07-435cce3d7c8d
+    Spec:
+      Admin Password:
+        Keep Secret:  true
+        Secret Key:   oracle_pwd
+        Secret Name:  db-secret
+      Persistence:
+        Access Mode:         ReadWriteMany
+        Size:                100Gi
+        Storage Class:       
+      Primary Database Ref:  sidb-sample
+      Replicas:              2
+      Sid:                   ORCLS
+    Status:
+      Cluster Connect String:   standby-sample.default:1521/ORCLS
+      Datafiles Created:        true
+      External Connect String:  100.96.226.85:31044/ORCLS
+      Role:                     PHYSICAL_STANDBY
+      Status:                   Healthy
+      Version:                  19.3.0.0.0
+    Events:                     <none>
+
+  ```
+
+## Provision New Standby Database for a Single Instance Database
+
+  Provision a new standby database instance for a single instance database(`.spec.primaryDatabaseRef`) by specifying appropriate values for the attributes in the the example `.yaml` file, and running the following command:
+
+  ```sh
+  $ kubectl create -f standbydatabase.yaml
+  
+    standbydatabase.database.oracle.com/standbydatabase-sample created
+  ```
+
+* ### Creation Status
+  
+ Creating a new standby database instance takes a while. When the 'status' status returns the response "Healthy", the Database is open for connections.
+
+  ```sh
+$ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.status}"
+   
+  Healthy
+```
+  
+* ### Connection Information
+
+  External and internal (running in Kubernetes pods) clients can connect to the database using .status.connectString and .status.clusterConnectString
+  respectively in the following command
+
+  ```sh
+  $ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.connectString}"
+
+    144.25.10.119:1521/ORCL
+  ```
+
+  The Oracle Database inside the container also has Oracle Enterprise Manager Express configured. To access OEM Express, start the browser and follow the URL:
+
+  ```sh
+  $ kubectl get standbydatabase standbydatabase-sample -o "jsonpath={.status.oemExpressUrl}"
+
+    https://144.25.10.119:5500/em
+  ```
+
+* ### Multiple Replicas
+  
+  Multiple database pod replicas can be provisioned when the persistent volume access mode is ReadWriteMany. Database is open and mounted by one of the replicas. Other replicas will have instance started but not mounted and serve to provide quick cold fail-over in case the active pod dies. Update the replica attribute in the .yaml and apply using the kubectl apply command or edit/patch commands
+
+  Note: This functionality requires the [K8s extension](https://github.com/oracle/docker-images/tree/main/OracleDatabase/SingleInstance/extensions/k8s)
+        Pre-built images from container-registry.oracle.com include the K8s extension
+
+* ### Patch Attributes
+
+  The following attributes cannot be patched post StandbyDatabase instance Creation : sid, persistence.
+
+  ```sh
+  $ kubectl --type=merge -p '{"spec":{"sid":"ORCL1"}}' patch singleinstancedatabase sidb-sample 
+
+    The SingleInstanceDatabase "sidb-sample" is invalid: spec.sid: Forbidden: cannot be changed
+  ```
